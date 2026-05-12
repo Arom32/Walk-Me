@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine 
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}      # 값이 없으면 postgres 사용
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-1234} # 값이 없으면 1234 사용
+      POSTGRES_DB: ${DB_NAME:-walkme_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      # ${DB_USER}가 비어있을 경우를 대비해 -U 옵션 확인
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-walkme_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  
+  web:
+    build: .
+    container_name: WalkMe
+    restart: always
+    environment:
+      # db 서비스의 이름인 'db'를 호스트로 사용
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-1234}@db:5432/${DB_NAME:-walkme_db}
+      - DB_HOST=db
+      - DB_NAME=${DB_NAME:-walkme_db}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db :
+        condition: service_healthy
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  postgres_data:
