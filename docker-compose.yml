@@ -20,7 +20,7 @@ services:
   
   web:
     build:
-      context: ./app   
+      context: ./backend  
       dockerfile: Dockerfile
     container_name: WalkMe
     restart: always
