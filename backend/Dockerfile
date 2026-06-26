@@ -25,4 +25,4 @@ COPY . .
 
 # 실행 (FastAPI 기준)
 # --proxy-headers: 리눅스 서버(Nginx 등) 뒤에서 돌릴 때 필요
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
