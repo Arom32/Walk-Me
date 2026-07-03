@@ -1,4 +1,6 @@
 from peft import LoraConfig
+from transformers import BitsAndBytesConfig
+import torch
 
 lora_config = LoraConfig(
 
@@ -18,4 +20,16 @@ lora_config = LoraConfig(
         "v_proj",
         "o_proj"
     ]  #gate,up,down_proj은 적용 x -> vram과다 사용방지
+)
+
+bnb_config = BitsAndBytesConfig(
+
+    load_in_4bit=True,
+
+    bnb_4bit_quant_type="nf4",
+
+    bnb_4bit_compute_dtype=torch.bfloat16,
+
+    bnb_4bit_use_double_quant=True
+
 )
