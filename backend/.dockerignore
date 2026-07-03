@@ -6,4 +6,4 @@ __pycache__/
 .env
 
 # 학습용 원본 데이터 (이미지에 불필요)
-data/train/
+backend/data/train/kw_1/
