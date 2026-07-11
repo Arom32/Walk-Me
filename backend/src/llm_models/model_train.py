@@ -15,14 +15,14 @@ from model_config import lora_config, bnb_config
 # 경로 / 하이퍼파라미터 설정
 # ------------------------------------------------------------------
 
-MODEL_NAME = "google/gemma-4-12b-it"  # 실제 사용하는 모델 이름으로 수정
+MODEL_NAME = "google/gemma-4-e4b"  # 실제 사용하는 모델 이름으로 수정
 
-TRAIN_FILE = "../../data/kw_1_train.jsonl"
-VAL_FILE = "../../data/kw_1_val.jsonl"
+TRAIN_FILE = "../../data/kw_1_train_10000.jsonl"
+VAL_FILE = "../../data/kw_1_val_10000.jsonl"
 
 OUTPUT_DIR = "../../checkpoints/kw_lora"
 
-MAX_SEQ_LENGTH = 512  # 사투리 변환 태스크는 문장 단위라 길지 않음. 데이터 분포 보고 조정
+#MAX_SEQ_LENGTH = 512  # 사투리 변환 태스크는 문장 단위라 길지 않음. 데이터 분포 보고 조정
 
 NUM_EPOCHS = 3
 PER_DEVICE_BATCH_SIZE = 2
@@ -96,7 +96,7 @@ def main():
         bf16=True,
         optim="paged_adamw_8bit",  # 4bit 양자화 모델과 궁합 좋음, VRAM 절약
         report_to="none",  # wandb 등 쓰면 "wandb"로 변경
-        max_seq_length=MAX_SEQ_LENGTH,
+        #max_seq_length=MAX_SEQ_LENGTH,
         packing=False,  # 문장 단위 짧은 샘플이라 packing은 끔 (필요시 True로)
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",

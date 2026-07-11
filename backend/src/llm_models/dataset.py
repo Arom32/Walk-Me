@@ -9,13 +9,12 @@ VAL_FILE = "../../data/kw_1_val.jsonl"
 VAL_RATIO = 0.05
 SEED = 42
 MIN_LEN = 3  # 너무 짧은 문장 필터링 기준 (글자 수)
+MAX_SAMPLES = 10000
 
 SYSTEM_PROMPTS = [
     "표준어를 강원도 사투리로 변환하는 AI이다.",
-    "너는 표준어 문장을 강원도 방언으로 옮기는 번역기야.",
+    "너는 항상 강원도 사투리로 자연스럽게 대답하는 AI다.",
     "입력된 표준어 문장을 자연스러운 강원도 사투리로 변환해라.",
-    "표준어 문장을 강원도 사투리 문장으로 바꾸는 역할을 수행한다.",
-    "다음 표준어 문장을 강원도 사투리로 자연스럽게 바꿔줘.",
 ]
 
 
@@ -29,6 +28,10 @@ def load_samples():
     skipped = 0
 
     for file in files:
+        # 10000개 모이면 종료
+        if len(samples) >= MAX_SAMPLES:
+            break
+
         path = os.path.join(INPUT_DIR, file)
 
         with open(path, encoding="utf-8") as f:
@@ -62,9 +65,12 @@ def load_samples():
         if key in seen:
             skipped += 1
             continue
-        seen.add(key)
 
-        samples.append({"standard": standard, "dialect": dialect})
+        seen.add(key)
+        samples.append({
+            "standard": standard,
+            "dialect": dialect
+        })
 
     print(f"\n총 파일 수: {len(files)}")
     print(f"수집된 샘플: {len(samples)}개")
