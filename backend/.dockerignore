@@ -4,3 +4,6 @@ __pycache__/
 *.pyc
 .git/
 .env
+
+# 학습용 원본 데이터 (이미지에 불필요)
+backend/data/train/kw_1/

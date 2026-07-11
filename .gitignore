@@ -7,3 +7,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# 학습용 원본 데이터 (이미지에 불필요)
+backend/data/train/kw_1/
+backend/src/llm_models/lora_output/
+
