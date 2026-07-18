@@ -8,7 +8,15 @@ __pycache__/
 *.pyo
 *.pyd
 
-# 학습용 원본 데이터 (이미지에 불필요)
-backend/data/train/kw_1/
-backend/src/llm_models/lora_output/
+# 학습용 원본 데이터 / 결과물 (이미지에 불필요)
+ai/llm/data/
+ai/llm/lora_output/
+ai/llm/checkpoints/
+
+# TTS 체크포인트 / AI Hub 원본 음성 데이터 (Drive에서 받아서 로컬에만 채움, git에는 안 올림)
+ai/tts/models/*
+!ai/tts/models/kangwon/
+ai/tts/models/kangwon/*
+!ai/tts/models/kangwon/.gitkeep
+ai/tts/prompts/*.wav
 
