@@ -51,5 +51,35 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000
 | `ai/tts/models/kangwon/` | CosyVoice **v3 (Fun-CosyVoice3-0.5B)** 체크포인트 (`cosyvoice3.yaml` + `speech_tokenizer_v3` + `CosyVoice-BlankEN/`) |
 | `ai/tts/prompts/*.wav` | zero-shot 프롬프트 |
 
-TTS가 깨지면 `ai/tts/README.md` 참고. v1(CosyVoice-300M-SFT) 패키지로 돌리면 학습과 불일치합니다.
-품질 확인: `cd ai/tts && python smoke_test.py`
+### TTS 모델 준비 (`ai/tts/models/kangwon/`)
+
+Drive의 `kangwon.zip`을 `ai/tts/models/kangwon/`에 그대로 풀면 아래 구성이 전부 포함되어 있어 따로 받을 게 없습니다:
+
+```text
+models/kangwon/
+  cosyvoice3.yaml
+  speech_tokenizer_v3.onnx
+  campplus.onnx
+  CosyVoice-BlankEN/           ← Qwen 토크나이저 디렉토리
+  llm.pt                       ← 파인튜닝 결과
+  flow.pt
+  hift.pt
+```
+
+TTS 전용 conda 환경도 필요합니다 (백엔드/RAG/LLM과는 별도):
+
+```bash
+conda create -n cosyvoice -y python=3.10
+conda activate cosyvoice
+cd ai/tts
+pip install -r requirements.txt
+```
+
+풀어놓은 뒤 반드시 아래로 정상 동작 확인:
+
+```bash
+cd ai/tts
+python smoke_test.py
+```
+
+`outputs/smoke_self_clone.wav`가 깨지면 문장 길이 문제가 아니라 **버전/환경 불일치**입니다 (v1 패키지가 섞여 있는 경우가 흔함). `ai/tts/README.md`의 트러블슈팅 표 참고.
