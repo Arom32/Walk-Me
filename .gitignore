@@ -20,3 +20,15 @@ ai/tts/models/kangwon/*
 !ai/tts/models/kangwon/.gitkeep
 ai/tts/prompts/*.wav
 
+# RAG 벡터 DB / 대용량 산출물 (로컬 생성 또는 Drive)
+ai/rag/data/chroma/
+ai/rag/data/processed/
+
+# 백엔드 로컬 에셋·원본
+backend/assets/
+backend/data/raw/
+backend/data/extracted/
+backend/.venv/
+.DS_Store
+
+ai/tts/outputs/*.wav

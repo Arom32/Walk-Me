@@ -22,6 +22,13 @@ def contains_chinese(text):
     return bool(chinese_char_pattern.search(text))
 
 
+_hangul_pattern = re.compile(r'[\uac00-\ud7a3]+')
+
+
+def contains_hangul(text):
+    return bool(_hangul_pattern.search(text))
+
+
 # replace special symbol
 def replace_corner_mark(text):
     text = text.replace('²', '平方')

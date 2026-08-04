@@ -1,0 +1,8 @@
+# ai/rag — 관광 RAG 인덱스/검색용 (LLM·TTS 의존성과 분리)
+chromadb>=0.5.0
+sentence-transformers>=3.0.0
+
+# --with-llm 쓸 때만 (ai/llm 과 동일 환경 권장)
+# transformers
+# torch
+# peft

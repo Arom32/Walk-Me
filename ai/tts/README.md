@@ -1,49 +1,75 @@
 # ai/tts
 
-강원도 사투리 TTS 추론 코드입니다. 학습 자체는 별도 저장소에서 완료되었고, 여기에는 그 결과물로 실제 추론을 돌리는 데 필요한 **최소한의 것만** 옮겨왔습니다 — `Model_TTS` 전체(235GB)가 아니라 코드 2.9MB + 참조 파일 몇 개입니다.
+강원도 사투리 TTS (CosyVoice + kangwon 체크포인트).
 
-## 여기 있는 것
+## 음성이 깨질 때 — 가장 흔한 원인
 
-- `cosyvoice/` — CosyVoice 추론 코드 (Apache 2.0, `LICENSE-cosyvoice` 참고)
-- `third_party/Matcha-TTS/matcha/` — CosyVoice가 내부적으로 쓰는 flow-matching 컴포넌트 (MIT, `LICENSE-matcha` 참고)
-- `requirements.txt` — 추론에만 필요한 의존성 (`Model_TTS/CosyVoice/requirements.txt`에서 학습/UI용 무거운 패키지 뺀 버전)
-- `inference_example.py` — 최소 추론 예제 (`AutoModel` → `inference_zero_shot`)
+팀원 학습 노트와 **추론 패키지 버전이 다르면** 음성이 깨집니다.
 
-## 여기 없는 것 (Drive에서 받아야 함)
+| | 팀원 학습 (정상 기준) | 깨지기 쉬운 패키지 |
+|--|----------------------|-------------------|
+| 베이스 | **CosyVoice-300M-SFT** | Fun-CosyVoice3 / BlankEN |
+| yaml | `cosyvoice.yaml` | `cosyvoice3.yaml` |
+| tokenizer | `speech_tokenizer_v1.onnx` | `speech_tokenizer_v3.onnx` |
+| 프롬프트 텍스트 | dialect 문장만 | `You are a helpful assistant.<\|endofprompt\|>...` |
+| vocoder | hift / hifigan (v1) | CosyVoice3 CausalHiFT |
 
-체크포인트(5.1G)와 프롬프트 wav는 git에 올리지 않았습니다. 체크포인트는 파일 크기 때문에(개별 파일이 GitHub 100MB 제한을 넘음), 프롬프트 wav는 AI Hub 원본 데이터라 이용정책상(제3자 제공 금지, 비상업적 목적만 허용 — https://www.aihub.or.kr/intrcn/guid/usagepolicy.do) git처럼 누구나 접근 가능한 곳에 두면 안 되기 때문입니다.
+`synthesize.py` 가 모델 폴더를 보고 v1/v3를 감지하고, v3면 경고를 냅니다.
 
-### 1) 체크포인트 → `models/kangwon/`
+**올바른 kangwon 구성 (v1):**
 
-- Drive 경로: `Corner-TTF/TTS-Model/` 
-- kangwon.zip (약 4.5 GB)
-- 다음 파일들을 그대로 `ai/tts/models/kangwon/` 밑에 풀어넣으면 됩니다 
-- 드라이브에서 다운 받은 파일로 압축 해제 후 덮어 씌워도 됩니다.
-
-| 파일 | 크기 |
-|---|---|
-| `llm.pt` | 1.9G |
-| `flow.pt` | 1.3G |
-| `speech_tokenizer_v3.onnx` | 925M |
-| `CosyVoice-BlankEN/` (폴더 그대로) | 947M |
-| `hift.pt` | 80M |
-| `campplus.onnx` | 27M |
-| `cosyvoice3.yaml` | 8.0K |
-
-라이선스: Apache 2.0 (HuggingFace `FunAudioLLM/Fun-CosyVoice3-0.5B-2512` 모델 카드 기준) — 재배포/파생 문제없음.
-
-### 2) 프롬프트 wav → `prompts/`
-
-- Drive 경로: `Corner-TTF/TTS-Model/` 
-- 파일: `st_set2_collectorgw185_speakergw1744_63_9.wav` ( 302KB )
-
-- 발화 텍스트(zero-shot 추론 시 `prompt_text`로 그대로 사용): `아까 내가 사이즈 먹고 그를 때부터 분멩이 택택할 거라고 했는데 나한테 어림도 웂으니까 하나 더 큰 거 주서요`
-
-### 받은 후
-
-```
-ai/tts/models/kangwon/   ← 체크포인트 파일들
-ai/tts/prompts/          ← wav 파일
+```text
+models/kangwon/
+  cosyvoice.yaml              ← 300M-SFT 쪽
+  speech_tokenizer_v1.onnx
+  campplus.onnx
+  llm.pt                      ← 파인튜닝 결과
+  flow.pt
+  hift.pt                     ← 또는 hifigan.pt 를 hift.pt 로 복사/심볼릭
+  (spk2info.pt 선택)
 ```
 
-이렇게 채워지면 `conda activate cosyvoice`(또는 `requirements.txt`로 새로 만든 환경)에서 `python inference_example.py` 실행 시 바로 동작합니다.
+베이스 onnx/yaml 은 `~/Corner-ttf/CosyVoice/pretrained_models/CosyVoice-300M-SFT/` 에서 가져오고,
+`llm.pt` / `flow.pt` / `hift.pt` 만 파인튜닝 `exp/...` average 결과로 교체하세요.
+
+## 환경 (학습과 동일 권장)
+
+| 항목 | 팀원 |
+|------|------|
+| OS | Ubuntu / WSL |
+| env | `conda activate cosyvoice` |
+| Python | 3.10 |
+| torch | 2.3.1+cu121 |
+| transformers | 4.51.3 |
+
+Windows Python 3.13 + 최신 torch 는 추가 위험 요인입니다.
+
+## 품질 확인
+
+```bat
+cd ai\tts
+python smoke_test.py
+```
+
+1. `outputs/smoke_self_clone.wav` — 프롬프트와 같은 문장 자기복제  
+   - 이것도 깨지면: **버전/환경** 문제 (문장 길이와 무관)  
+   - 괜찮으면: RAG 사투리 전체 문장으로 진행 (`--text "..."`)
+
+문장은 **자르지 않습니다.**
+
+## 프롬프트 (AI Hub dialect)
+
+- wav: `prompts/st_set2_collectorgw185_speakergw1744_63_9.wav` (16kHz mono)
+- text (v1):  
+  `아까 내가 사이즈 먹고 그를 때부터 분멩이 택택할 거라고 했는데 나한테 어림도 웂으니까 하나 더 큰 거 주서요`
+
+## 파이프라인
+
+```bat
+REM 텍스트 (Windows OK)
+cd ai
+python pipeline.py "속초 가볼 만한 곳" --places-only --with-llm
+
+REM TTS (가능하면 WSL cosyvoice + v1 kangwon)
+python smoke_test.py --text "여기에 사투리 답변 전체"
+```

@@ -155,7 +155,11 @@ class TransformerLM(torch.nn.Module):
             ignore_eos: bool = True,
     ):
         if ignore_eos is True:
-            weighted_scores[self.speech_token_size] = -float('inf')
+            # CosyVoice2/3: eos 는 speech_token_size+1
+            eos = getattr(self, "eos_token", self.speech_token_size)
+            weighted_scores[eos] = -float("inf")
+            if eos != self.speech_token_size and self.speech_token_size < weighted_scores.numel():
+                weighted_scores[self.speech_token_size] = -float("inf")
         top_ids = self.sampling(weighted_scores, decoded_tokens, sampling)
         return top_ids
 
@@ -226,11 +230,14 @@ class TransformerLM(torch.nn.Module):
 class Qwen2Encoder(torch.nn.Module):
     def __init__(self, pretrain_path):
         super().__init__()
+        # bf16 기본 유지 (llm.pt 학습과 맞춤). dtype 충돌은 forward에서 캐스팅.
         self.model = Qwen2ForCausalLM.from_pretrained(pretrain_path)
 
     def forward(self, xs: torch.Tensor, xs_lens: torch.Tensor):
         T = xs.size(1)
         masks = ~make_pad_mask(xs_lens, T)
+        param = next(self.model.parameters())
+        xs = xs.to(device=param.device, dtype=param.dtype)
         outs = self.model(
             inputs_embeds=xs,
             attention_mask=masks,
@@ -241,6 +248,9 @@ class Qwen2Encoder(torch.nn.Module):
 
     def forward_one_step(self, xs, masks, cache=None):
         input_masks = masks[:, -1, :]
+        # speech_embedding(float) vs Qwen BlankEN(bf16) dtype 불일치 방지
+        param = next(self.model.parameters())
+        xs = xs.to(device=param.device, dtype=param.dtype)
         outs = self.model(
             inputs_embeds=xs,
             attention_mask=input_masks,
@@ -469,7 +479,7 @@ class Qwen2LM(TransformerLM):
             prompt_speech_token_len: torch.Tensor,
             embedding: torch.Tensor,
             sampling: int = 25,
-            max_token_text_ratio: float = 20,
+            max_token_text_ratio: float = 15,
             min_token_text_ratio: float = 2,
             uuid: str = '',
     ) -> Generator[torch.Tensor, None, None]:
@@ -495,6 +505,12 @@ class Qwen2LM(TransformerLM):
         else:
             prompt_speech_token_emb = torch.zeros(1, 0, self.llm_input_size, dtype=text_emb.dtype).to(device)
         lm_input = torch.concat([sos_emb, text_emb, task_id_emb, prompt_speech_token_emb], dim=1)
+        # Qwen backbone dtype에 맞춤 (Float vs BFloat16)
+        try:
+            param = next(self.llm.model.parameters())
+            lm_input = lm_input.to(dtype=param.dtype)
+        except Exception:
+            pass
 
         # 4. cal min/max_length
         min_len = int((text_len - prompt_text_len) * min_token_text_ratio)
@@ -538,11 +554,14 @@ class Qwen2LM(TransformerLM):
         else:
             out_tokens = []
             cache = None
+            decoder_dtype = next(self.llm_decoder.parameters()).dtype
             for i in range(max_len):
                 y_pred, cache = self.llm.forward_one_step(lm_input,
                                                           masks=torch.tril(torch.ones((1, lm_input.shape[1], lm_input.shape[1]), device=lm_input.device)).to(torch.bool),
                                                           cache=cache)
-                logp = self.llm_decoder(y_pred[:, -1]).log_softmax(dim=-1)
+                # Qwen(bf16) → llm_decoder(float) dtype 맞춤
+                hidden = y_pred[:, -1].to(dtype=decoder_dtype)
+                logp = self.llm_decoder(hidden).log_softmax(dim=-1)
                 top_ids = self.sampling_ids(logp.squeeze(dim=0), out_tokens, sampling, ignore_eos=True if i < min_len else False)
                 if top_ids in self.stop_token_ids:
                     break
@@ -625,7 +644,8 @@ class Qwen2LM(TransformerLM):
                     y_pred, cache = self.llm.forward_one_step(lm_input,
                                                               masks=torch.tril(torch.ones((1, seq_len, seq_len), device=lm_input.device)).to(torch.bool),
                                                               cache=cache)
-                    logp = self.llm_decoder(y_pred[:, -1]).log_softmax(dim=-1)
+                    hidden = y_pred[:, -1].to(dtype=next(self.llm_decoder.parameters()).dtype)
+                    logp = self.llm_decoder(hidden).log_softmax(dim=-1)
                     if next_fill_index != -1 and len(out_tokens) == next_fill_index:
                         top_ids = self.fill_token
                         next_fill_index += (self.mix_ratio[1] + 1)
@@ -651,7 +671,8 @@ class Qwen2LM(TransformerLM):
             y_pred, cache = self.llm.forward_one_step(lm_input,
                                                       masks=torch.tril(torch.ones((1, seq_len, seq_len), device=lm_input.device)).to(torch.bool),
                                                       cache=cache)
-            logp = self.llm_decoder(y_pred[:, -1]).log_softmax(dim=-1)
+            hidden = y_pred[:, -1].to(dtype=next(self.llm_decoder.parameters()).dtype)
+            logp = self.llm_decoder(hidden).log_softmax(dim=-1)
             top_ids = self.sampling_ids(logp.squeeze(dim=0), out_tokens, sampling, ignore_eos=False)
             out_tokens.append(top_ids)
             if top_ids >= self.speech_token_size:

@@ -2,8 +2,12 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 
+from pathlib import Path
+
+_LLM_DIR = Path(__file__).resolve().parent
 BASE_MODEL = "google/gemma-4-E2B-it"
-LORA_PATH = "./lora_output/final"   # 자신의 checkpoint
+# 팀 공식 LoRA (Drive/팀원 체크포인트를 여기로 복사)
+LORA_PATH = str(_LLM_DIR / "lora_output" / "final")
 
 SYSTEM_PROMPT = """
 너는 강원도 토박이 AI 비서다.

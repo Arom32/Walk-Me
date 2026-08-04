@@ -24,7 +24,7 @@ import os
 import re
 import inflect
 from cosyvoice.utils.file_utils import logging, load_wav
-from cosyvoice.utils.frontend_utils import contains_chinese, replace_blank, replace_corner_mark, remove_bracket, spell_out_number, split_paragraph, is_only_punctuation
+from cosyvoice.utils.frontend_utils import contains_chinese, contains_hangul, replace_blank, replace_corner_mark, remove_bracket, spell_out_number, split_paragraph, is_only_punctuation
 
 
 class CosyVoiceFrontEnd:
@@ -150,6 +150,15 @@ class CosyVoiceFrontEnd:
                 text = re.sub(r'[，,、]+$', '。', text)
                 texts = list(split_paragraph(text, partial(self.tokenizer.encode, allowed_special=self.allowed_special), "zh", token_max_n=80,
                                              token_min_n=60, merge_len=20, comma_split=False))
+            elif contains_hangul(text):
+                # 한국어: 영어 wetext/숫자 영어화 금지 (품질 붕괴 원인)
+                text = text.replace("\n", " ").strip()
+                text = re.sub(r'\s+', ' ', text)
+                # 짧은 문장 단위로 분할
+                parts = re.split(r'(?<=[.!?다요죠까니])\s+|(?<=[。．])\s*', text)
+                texts = [p.strip() for p in parts if p and p.strip()]
+                if not texts:
+                    texts = [text]
             else:
                 if self.text_frontend == 'wetext':
                     text = self.en_tn_model.normalize(text)

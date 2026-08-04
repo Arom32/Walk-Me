@@ -42,8 +42,24 @@ def read_json_lists(list_file):
 
 
 def load_wav(wav, target_sr, min_sr=16000):
-    speech, sample_rate = torchaudio.load(wav, backend='soundfile')
-    speech = speech.mean(dim=0, keepdim=True)
+    # 최신 torchaudio는 torchcodec를 요구하는 경우가 많아 soundfile 우선
+    try:
+        import soundfile as sf
+        audio, sample_rate = sf.read(wav, dtype="float32")
+        speech = torch.from_numpy(audio)
+        if speech.ndim == 1:
+            speech = speech.unsqueeze(0)
+        else:
+            # (T, C) → (C, T) → mono
+            speech = speech.transpose(0, 1)
+            speech = speech.mean(dim=0, keepdim=True)
+    except Exception:
+        try:
+            speech, sample_rate = torchaudio.load(wav, backend="soundfile")
+        except TypeError:
+            speech, sample_rate = torchaudio.load(wav)
+        speech = speech.mean(dim=0, keepdim=True)
+
     if sample_rate != target_sr:
         assert sample_rate >= min_sr, 'wav sample rate {} must be greater than {}'.format(sample_rate, target_sr)
         speech = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sr)(speech)
