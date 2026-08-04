@@ -64,8 +64,9 @@ def _resolve_model_dir() -> Path:
 def detect_cosyvoice_family(model_dir: Path) -> str:
     """반환: 'v1' | 'v2' | 'v3' | 'unknown'
 
-    팀원 학습 노트 기준 강원 파인튜닝은 CosyVoice-300M-SFT (v1,
-    speech_tokenizer_v1, cosyvoice.yaml). CosyVoice3 패키지로 돌리면 깨짐.
+    강원 파인튜닝은 CosyVoice 3.0 (Fun-CosyVoice3-0.5B, speech_tokenizer_v3,
+    cosyvoice3.yaml) 기준. v1/CosyVoice-300M-SFT Full SFT 시도는 노이즈로
+    실패해 폐기됐음 (Model_TTS/CLAUDE.md, docs/attempt1_cosyvoice1_failure.md).
     """
     if (model_dir / "cosyvoice.yaml").exists():
         return "v1"
@@ -81,17 +82,18 @@ def _warn_if_version_mismatch(model_dir: Path, family: str) -> None:
     has_v3_tok = (model_dir / "speech_tokenizer_v3.onnx").exists()
     has_blank = (model_dir / "CosyVoice-BlankEN").exists()
     print(f"[TTS] family={family} tokenizer_v1={has_v1_tok} tokenizer_v3={has_v3_tok} BlankEN={has_blank}")
-    if family == "v3":
+    if family != "v3":
         print(
-            "[TTS][경고] cosyvoice3.yaml 감지.\n"
-            "  팀원 학습은 CosyVoice-300M-SFT (v1, speech_tokenizer_v1, cosyvoice.yaml) 입니다.\n"
-            "  v3로 추론하면 음성이 깨질 수 있습니다.\n"
-            "  → models/kangwon 을 v1 구성으로 맞추세요:\n"
-            "     cosyvoice.yaml + speech_tokenizer_v1.onnx + llm.pt/flow.pt/hift.pt\n"
-            "     (베이스: pretrained_models/CosyVoice-300M-SFT 의 onnx/yaml + FT 가중치)"
+            f"[TTS][경고] cosyvoice3.yaml 이 아닌 구성 감지 (family={family}).\n"
+            "  이 kangwon 파인튜닝은 CosyVoice 3.0 (Fun-CosyVoice3-0.5B, speech_tokenizer_v3, cosyvoice3.yaml) 기준입니다.\n"
+            "  (Model_TTS/CLAUDE.md 참고 — v1/CosyVoice-300M-SFT Full SFT 시도는 노이즈로 실패해 폐기됨)\n"
+            "  다른 버전으로 추론하면 음성이 깨지거나 로드가 실패할 수 있습니다.\n"
+            "  → models/kangwon 을 v3 구성으로 맞추세요:\n"
+            "     cosyvoice3.yaml + speech_tokenizer_v3.onnx + campplus.onnx + CosyVoice-BlankEN/ + llm.pt/flow.pt/hift.pt\n"
+            "     (Drive의 kangwon.zip 을 그대로 풀면 전부 포함되어 있음)"
         )
     if family == "v1" and has_v3_tok and not has_v1_tok:
-        print("[TTS][경고] v1 yaml 인데 tokenizer 가 v3 만 있습니다. 학습과 불일치합니다.")
+        print("[TTS][경고] v1 yaml 인데 tokenizer 가 v3 만 있습니다. 구성이 서로 불일치합니다.")
 
 
 def prompt_text_for_family(family: str, transcript: str | None = None) -> str:

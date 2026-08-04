@@ -35,7 +35,7 @@ python pipeline.py "속초 가볼 만한 곳" --places-only --with-llm
 ```bat
 cd backend
 set PYTHONPATH=%CD%;%CD%\..\ai
-uvicorn src.main:app --port 8000
+uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
 
 - `GET /health`
@@ -48,8 +48,8 @@ uvicorn src.main:app --port 8000
 |------|------|
 | `ai/llm/lora_output/final/` | Gemma LoRA |
 | `ai/rag/data/chroma/` | 관광 인덱스 |
-| `ai/tts/models/kangwon/` | CosyVoice **v1(300M-SFT)** 체크포인트 (`cosyvoice.yaml` + `speech_tokenizer_v1`) |
+| `ai/tts/models/kangwon/` | CosyVoice **v3 (Fun-CosyVoice3-0.5B)** 체크포인트 (`cosyvoice3.yaml` + `speech_tokenizer_v3` + `CosyVoice-BlankEN/`) |
 | `ai/tts/prompts/*.wav` | zero-shot 프롬프트 |
 
-TTS가 깨지면 `ai/tts/README.md` 참고. CosyVoice3 패키지로 돌리면 학습과 불일치합니다.
+TTS가 깨지면 `ai/tts/README.md` 참고. v1(CosyVoice-300M-SFT) 패키지로 돌리면 학습과 불일치합니다.
 품질 확인: `cd ai/tts && python smoke_test.py`

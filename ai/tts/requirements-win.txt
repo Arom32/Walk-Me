@@ -20,3 +20,4 @@ tiktoken
 tqdm
 pyarrow
 gdown
+# lightning 은 Matcha 학습용 — 추론 패치로 불필요해짐

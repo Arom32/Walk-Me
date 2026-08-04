@@ -6,7 +6,8 @@
 
 권장:
   conda activate cosyvoice   # Python 3.10, torch 2.3.1
-  models/kangwon = CosyVoice-300M-SFT(v1) yaml/tokenizer + FT 가중치
+  models/kangwon = CosyVoice 3.0(Fun-CosyVoice3-0.5B) yaml/tokenizer + FT 가중치
+  (v1/CosyVoice-300M-SFT 는 이 프로젝트에서 노이즈로 실패해 폐기된 시도임 — Model_TTS/CLAUDE.md 참고)
 
 사용:
   cd ai/tts
@@ -62,10 +63,11 @@ def main() -> None:
     print("코드 전사문:", DEFAULT_PROMPT_TRANSCRIPT)
     if DEFAULT_PROMPT_TRANSCRIPT != CANONICAL_DIALECT:
         print("[경고] 전사문이 AI Hub dialect 와 다릅니다.")
-    if family == "v3":
+    if family != "v3":
         print(
-            "[경고] CosyVoice3 감지 — 팀 학습은 300M-SFT(v1) 입니다. "
-            "깨지면 models/kangwon 을 v1 구성으로 바꾸세요. (README 참고)"
+            f"[경고] family={family} 감지 — 이 kangwon 파인튜닝은 CosyVoice3(v3) 기준입니다. "
+            "깨지면 models/kangwon 을 v3 구성(cosyvoice3.yaml + speech_tokenizer_v3.onnx + "
+            "CosyVoice-BlankEN/)으로 바꾸세요. (README 참고)"
         )
     print("=" * 60)
 
