@@ -17,18 +17,29 @@ PROMPT_TRANSCRIPT = (
     "나한테 어림도 웂으니까 하나 더 큰 거 주서요"
 )
 
+<<<<<<< Updated upstream
 
 def _prompt_for_model(model_dir: str) -> str:
     root = Path(model_dir)
     if (root / "cosyvoice3.yaml").exists():
         return "You are a helpful assistant.<|endofprompt|>" + PROMPT_TRANSCRIPT
     return PROMPT_TRANSCRIPT
+=======
+# Drive에서 받은 프롬프트 wav를 ./prompts/ 에 넣고 파일명을 맞춰줄 것 (README 참고)
+PROMPT_WAV = './prompts/st_set2_collectorgw185_speakergw1744_63_9.wav'
+PROMPT_TEXT = (
+    'You are a helpful assistant.<|endofprompt|>'
+    '아까 내가 사이즈 먹고 그를 때부터 분멩이 택택할 거라고 했는데 '
+    '나한테 어림도 웂으니까 하나 더 큰 거 주서요'
+)
+>>>>>>> Stashed changes
 
 
 def main(text: str):
     prompt_text = _prompt_for_model(MODEL_DIR)
     print("prompt_text:", prompt_text)
     cosyvoice = AutoModel(model_dir=MODEL_DIR)
+<<<<<<< Updated upstream
     for i, j in enumerate(
         cosyvoice.inference_zero_shot(
             text, prompt_text, PROMPT_WAV, stream=False, text_frontend=False
@@ -42,6 +53,21 @@ def main(text: str):
         else:
             torchaudio.save(out_path, wav if wav.ndim == 2 else wav.unsqueeze(0), cosyvoice.sample_rate)
         print(f"saved {out_path}")
+=======
+    for i, j in enumerate(cosyvoice.inference_zero_shot(text, PROMPT_TEXT, PROMPT_WAV, stream=False)):
+        out_path = f'out_{i}.wav'
+        try:
+            import soundfile as sf
+            wav = j['tts_speech'].detach().cpu()
+            if wav.ndim == 2:
+                wav = wav.transpose(0, 1).numpy()
+            else:
+                wav = wav.numpy()
+            sf.write(out_path, wav, cosyvoice.sample_rate)
+        except Exception:
+            torchaudio.save(out_path, j['tts_speech'].cpu(), cosyvoice.sample_rate)
+        print(f'saved {out_path}')
+>>>>>>> Stashed changes
 
 
 if __name__ == "__main__":

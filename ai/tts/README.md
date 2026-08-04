@@ -29,6 +29,7 @@ models/kangwon/
   (spk2info.pt 선택)
 ```
 
+<<<<<<< Updated upstream
 베이스 onnx/yaml 은 `~/Corner-ttf/CosyVoice/pretrained_models/CosyVoice-300M-SFT/` 에서 가져오고,
 `llm.pt` / `flow.pt` / `hift.pt` 만 파인튜닝 `exp/...` average 결과로 교체하세요.
 
@@ -73,3 +74,26 @@ python pipeline.py "속초 가볼 만한 곳" --places-only --with-llm
 REM TTS (가능하면 WSL cosyvoice + v1 kangwon)
 python smoke_test.py --text "여기에 사투리 답변 전체"
 ```
+=======
+## 파이프라인 (RAG + 사투리 + TTS)
+
+```bat
+cd ai
+
+REM 1) kangwon 가중치 → models\kangwon\
+REM 2) 프롬프트 wav → prompts\
+
+python pipeline.py "속초 가볼 만한 곳" --places-only --with-llm --tts
+```
+
+API:
+
+```bat
+cd backend
+set PYTHONPATH=%CD%;%CD%\..\ai
+uvicorn src.main:app --host 0.0.0.0 --port 8000
+```
+
+`POST /guide` body 예: `{"question":"속초 가볼 만한 곳","tts":true}`
+
+>>>>>>> Stashed changes

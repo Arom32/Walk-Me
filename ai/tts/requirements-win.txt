@@ -13,6 +13,7 @@ diffusers
 transformers
 onnxruntime
 modelscope
+<<<<<<< Updated upstream
 x-transformers
 einops
 g2p-en
@@ -20,3 +21,9 @@ tiktoken
 tqdm
 pyarrow
 gdown
+=======
+tqdm
+pyarrow
+gdown
+# lightning 은 Matcha 학습용 — 추론 패치로 불필요해짐
+>>>>>>> Stashed changes
