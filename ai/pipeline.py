@@ -55,9 +55,9 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.tts_only:
-        from tts.synthesize import synthesize
+        from tts.subprocess_client import synthesize_via_cosyvoice_env
 
-        path = synthesize(args.tts_only, out_path=args.out)
+        path = synthesize_via_cosyvoice_env(args.tts_only, out_path=args.out)
         print("=" * 60)
         print("[TTS only]")
         print(args.tts_only)
@@ -89,13 +89,13 @@ def main() -> None:
 
     if args.tts:
         _free_llm()
-        from tts.synthesize import synthesize
+        from tts.subprocess_client import synthesize_via_cosyvoice_env
 
         # 생성한 사투리 답변 전체를 그대로 읽음 (자르지 않음)
         speak = result["answer"]
         print("[TTS 입력]")
         print(speak)
-        path = synthesize(speak, out_path=args.out)
+        path = synthesize_via_cosyvoice_env(speak, out_path=args.out)
         print("[음성]")
         print(path)
         result["audio_path"] = str(path)

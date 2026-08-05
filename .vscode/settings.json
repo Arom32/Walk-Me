@@ -1,0 +1,11 @@
+{
+  "files.watcherExclude": {
+    "**/ai/tts/models/**": true,
+    "**/ai/tts/outputs/**": true,
+    "**/.git/**": true
+  },
+  "search.exclude": {
+    "**/ai/tts/models/**": true,
+    "**/ai/tts/outputs/**": true
+  }
+}

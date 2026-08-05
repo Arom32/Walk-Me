@@ -207,3 +207,29 @@ def synthesize(
     _save_wav(out_path, merged, cosy.sample_rate)
     print(f"[TTS] saved {out_path} ({merged.shape[-1] / cosy.sample_rate:.2f}s)")
     return out_path
+
+
+def _cli() -> None:
+    """서브프로세스 진입점 — walkme-llm env 등 다른 인터프리터에서
+    `conda run -n cosyvoice python synthesize.py <text> --out <path>`로 호출됨
+    (ai/tts/subprocess_client.py 참고). 마지막 줄에 결과 wav 경로를 출력한다."""
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("text")
+    parser.add_argument("--out", default=None)
+    parser.add_argument("--prompt-text", default=None)
+    parser.add_argument("--prompt-wav", default=None)
+    args = parser.parse_args()
+
+    path = synthesize(
+        args.text,
+        out_path=args.out,
+        prompt_text=args.prompt_text,
+        prompt_wav=args.prompt_wav,
+    )
+    print(path)
+
+
+if __name__ == "__main__":
+    _cli()

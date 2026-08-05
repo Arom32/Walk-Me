@@ -102,10 +102,10 @@ def guide(req: GuideRequest):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-            from tts.synthesize import synthesize
+            from tts.subprocess_client import synthesize_via_cosyvoice_env
 
             speak = result["answer"]
-            wav_path = synthesize(speak)
+            wav_path = synthesize_via_cosyvoice_env(speak)
             payload["audio_url"] = f"/guide/audio/{wav_path.name}"
             payload["audio_path"] = str(wav_path)
         except Exception as e:

@@ -273,7 +273,8 @@ def convert_to_dialect(
         if bad or not opener or len(opener) > 80:
             return body, True
         return f"{opener}\n{body}", True
-    except Exception:
+    except Exception as e:
+        print(f"[경고] LoRA 사투리 변환 실패, RAG 템플릿으로 폴백: {e!r}")
         return body, True
 
 
