@@ -17,22 +17,37 @@
 **공식 분리:** RAG = 사실(장소명) · LoRA/템플릿 = 말투 · CosyVoice = 음성.  
 기본 모델은 `gemma-4-E2B-it` + 팀 강원 LoRA. gemma-2는 폐기, gemma-4-12B는 크기상 보류.
 
+## 환경 (conda 2개로 분리, 필수)
+
+`google/gemma-4-E2B-it`(LLM)는 `transformers>=5.12.1`이 있어야 로딩되는데, CosyVoice는 학습 재현을 위해 `transformers==4.51.3`에 고정돼 있다 — 두 요구사항이 한 Python 프로세스 안에서 절대 동시에 만족될 수 없다. 그래서 conda env를 완전히 둘로 나눈다:
+
+| env | 용도 | 설치 |
+|---|---|---|
+| `walkme-llm` | RAG + LLM(LoRA) + backend + `pipeline.py` 실행 | `pip install -r ai/llm/requirements.txt -r ai/rag/requirements.txt -r backend/requirements.txt` |
+| `cosyvoice` | TTS(CosyVoice) 전용 | `ai/tts/requirements.txt` (아래 "TTS 모델 준비" 참고) |
+
+`pipeline.py`와 backend는 `walkme-llm` env에서 실행하면 된다. TTS는 `ai/tts/subprocess_client.py`가 내부적으로 `conda run -n cosyvoice python synthesize.py ...`를 서브프로세스로 호출해 처리하므로, **`cosyvoice` env를 따로 activate할 필요는 없고 conda에 그 env가 존재하기만 하면 된다.**
+
+과거에 `except Exception`으로 LLM 로딩 실패가 조용히 삼켜져서 RAG 템플릿 문장으로만 "성공"한 것처럼 보이던 문제가 있었다 — 지금은 실패 시 `[경고] LoRA 사투리 변환 실패, RAG 템플릿으로 폴백: ...`가 찍히니, 이 경고가 보이면 `walkme-llm` env가 아니라 `cosyvoice` env(또는 transformers가 낡은 다른 env)에서 실행 중이라는 뜻이다.
+
 ## CLI
 
-```bat
+```bash
+conda activate walkme-llm
 cd ai
 python pipeline.py "속초 가볼 만한 곳" --places-only --with-llm --tts
 ```
 
 TTS 없이 텍스트만:
 
-```bat
+```bash
 python pipeline.py "속초 가볼 만한 곳" --places-only --with-llm
 ```
 
 ## API
 
-```bat
+```bash
+conda activate walkme-llm
 cd backend
 set PYTHONPATH=%CD%;%CD%\..\ai
 uvicorn src.main:app --host 0.0.0.0 --port 8000
@@ -66,7 +81,7 @@ models/kangwon/
   hift.pt
 ```
 
-TTS 전용 conda 환경도 필요합니다 (백엔드/RAG/LLM과는 별도):
+TTS 전용 conda 환경(`cosyvoice`)도 한 번 만들어둬야 합니다 — `pipeline.py`/backend가 `walkme-llm` env에서 실행되면서 이 env를 서브프로세스로 자동 호출합니다 (위 "환경" 섹션 참고). 직접 activate해서 쓸 일은 smoke test 때뿐입니다:
 
 ```bash
 conda create -n cosyvoice -y python=3.10

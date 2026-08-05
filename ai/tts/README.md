@@ -2,6 +2,11 @@
 
 강원도 사투리 TTS (CosyVoice + kangwon 체크포인트).
 
+**이 폴더의 코드는 `cosyvoice` conda env(transformers==4.51.3 고정)에서만 돌아갑니다.** `ai/llm`이 요구하는 `transformers>=5.12.1`(gemma-4 로딩용)과는 같은 프로세스에 절대 공존할 수 없어서, `pipeline.py`/backend는 이 폴더를 직접 import하지 않고 `ai/tts/subprocess_client.py`를 통해 `synthesize.py`를 별도 프로세스로 실행합니다 (자세한 배경은 `ai/README.md`의 "환경" 섹션 참고). `synthesize.py`를 서브프로세스 진입점으로 직접 호출하고 싶으면:
+```bash
+conda run -n cosyvoice python synthesize.py "합성할 문장" --out outputs/test.wav
+```
+
 ## 음성이 깨질 때 — 가장 흔한 원인
 
 정확한 학습 스펙/체크포인트 선정 경위는 `Model_TTS/CLAUDE.md` 10번 섹션 참고. 추론 패키지 버전이 실제 학습 베이스와 다르면 음성이 깨집니다.
@@ -78,7 +83,10 @@ python smoke_test.py
 
 ## 파이프라인 (RAG + 사투리 + TTS)
 
+`pipeline.py`/backend는 `walkme-llm` env에서 실행합니다 (이 TTS 폴더의 `cosyvoice` env가 아닙니다 — 자세한 건 `ai/README.md` "환경" 섹션 참고). TTS는 내부에서 `cosyvoice` env를 서브프로세스로 자동 호출하므로 따로 activate할 필요는 없습니다.
+
 ```bat
+conda activate walkme-llm
 cd ai
 
 REM 1) kangwon 가중치(v3) → models\kangwon\
@@ -93,16 +101,18 @@ python pipeline.py "속초 가볼 만한 곳" --places-only --with-llm --tts
 python pipeline.py "속초 가볼 만한 곳" --places-only --with-llm
 ```
 
-TTS만 직접 (가능하면 WSL cosyvoice + v3 kangwon):
+TTS만 직접 (cosyvoice env에서, v3 kangwon):
 
 ```bat
+conda activate cosyvoice
 cd ai/tts
 python smoke_test.py --text "여기에 사투리 답변 전체"
 ```
 
-API:
+API (walkme-llm env에서):
 
 ```bat
+conda activate walkme-llm
 cd backend
 set PYTHONPATH=%CD%;%CD%\..\ai
 uvicorn src.main:app --host 0.0.0.0 --port 8000
