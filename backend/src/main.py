@@ -27,8 +27,19 @@ for p in (str(BACKEND_DIR), str(AI_DIR), str(AI_DIR / "tts")):
         sys.path.insert(0, p)
 
 from src.config import settings  # noqa: E402
+#추가----------------
+from src.database import Base, engine  # noqa: E402
+from src import models  # noqa: E402 
+from src.routers import users  # noqa: E402
+
+
 
 app = FastAPI(title="Walk-Me", version="0.2.0")
+Base.metadata.create_all(bind=engine)
+app.include_router(users.router)
+
+#-------------------------
+
 
 
 class GuideRequest(BaseModel):

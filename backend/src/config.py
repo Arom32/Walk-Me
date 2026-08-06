@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     CHROMA_DIR: Optional[str] = None
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(REPO_ROOT / ".env"), #".env"에서 해당 코드로 변경
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
