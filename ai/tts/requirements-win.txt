@@ -1,0 +1,23 @@
+# CosyVoice 추론 — Windows / Python 3.11+ 용 (버전 핀 느슨)
+# 전체 tts/requirements.txt 는 Linux+cu121+numpy1.26 기준이라 3.13에서 깨질 수 있음
+torchaudio
+soundfile
+librosa
+HyperPyYAML
+hydra-core
+inflect
+conformer
+wetext
+openai-whisper
+diffusers
+transformers
+onnxruntime
+modelscope
+x-transformers
+einops
+g2p-en
+tiktoken
+tqdm
+pyarrow
+gdown
+# lightning 은 Matcha 학습용 — 추론 패치로 불필요해짐

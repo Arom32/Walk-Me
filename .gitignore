@@ -7,3 +7,29 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# 학습용 원본 데이터 / 결과물 (이미지에 불필요)
+ai/llm/data/
+ai/llm/lora_output/
+ai/llm/checkpoints/
+
+
+# TTS 체크포인트 / AI Hub 원본 음성 데이터 (Drive에서 받아서 로컬에만 채움, git에는 안 올림)
+ai/tts/models/*
+!ai/tts/models/kangwon/
+ai/tts/models/kangwon/*
+!ai/tts/models/kangwon/.gitkeep
+ai/tts/prompts/*.wav
+
+# RAG 벡터 DB / 대용량 산출물 (로컬 생성 또는 Drive)
+ai/rag/data/chroma/
+ai/rag/data/processed/
+
+# 백엔드 로컬 에셋·원본
+backend/assets/
+backend/data/
+backend/data/extracted/
+backend/.venv/
+.DS_Store
+backend/src/llm_models/
+ai/tts/outputs/*.wav
