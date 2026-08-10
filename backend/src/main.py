@@ -89,18 +89,11 @@ def guide(req: GuideRequest):
 
     if req.tts:
         try:
-            # VRAM: LLM 언로드 후 TTS
-            import gc
+            # VRAM: LLM은 지우지 않고 CPU로만 내려서 TTS에 GPU를 내준다
+            # (지우면 다음 요청 때 디스크에서 다시 로딩해야 함 — release_llm_gpu_memory 참고)
+            from rag.ask import release_llm_gpu_memory
 
-            import rag.ask as ask_mod
-            import torch
-
-            ask_mod._model = None
-            ask_mod._tokenizer = None
-            ask_mod._loaded_with_lora = None
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            release_llm_gpu_memory()
 
             from tts.subprocess_client import synthesize_via_cosyvoice_env
 
