@@ -28,7 +28,7 @@
 
 `pipeline.py`와 backend는 `walkme-llm` env에서 실행하면 된다. TTS는 `ai/tts/subprocess_client.py`가 내부적으로 `conda run -n cosyvoice python synthesize.py ...`를 서브프로세스로 호출해 처리하므로, **`cosyvoice` env를 따로 activate할 필요는 없고 conda에 그 env가 존재하기만 하면 된다.**
 
-과거에 `except Exception`으로 LLM 로딩 실패가 조용히 삼켜져서 RAG 템플릿 문장으로만 "성공"한 것처럼 보이던 문제가 있었다 — 지금은 실패 시 `[경고] LoRA 사투리 변환 실패, RAG 템플릿으로 폴백: ...`가 찍히니, 이 경고가 보이면 `walkme-llm` env가 아니라 `cosyvoice` env(또는 transformers가 낡은 다른 env)에서 실행 중이라는 뜻이다.
+실행 중 `[경고] LoRA 사투리 변환 실패, RAG 템플릿으로 폴백: ...`이 찍히면 `walkme-llm` env가 아니라 `cosyvoice` env(또는 transformers가 낡은 다른 env)에서 실행 중이라는 뜻이다 — 배경은 `doc/troubleshooting.md` 참고.
 
 ## CLI
 
@@ -97,4 +97,4 @@ cd ai/tts
 python smoke_test.py
 ```
 
-`outputs/smoke_self_clone.wav`가 깨지면 문장 길이 문제가 아니라 **버전/환경 불일치**입니다 (v1 패키지가 섞여 있는 경우가 흔함). `ai/tts/README.md`의 트러블슈팅 표 참고.
+`outputs/smoke_self_clone.wav`가 깨지면 문장 길이 문제가 아니라 **버전/환경 불일치**입니다 (v1 패키지가 섞여 있는 경우가 흔함). `doc/tts-voice-quality.md` 참고.
