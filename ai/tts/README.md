@@ -7,21 +7,9 @@
 conda run -n cosyvoice python synthesize.py "합성할 문장" --out outputs/test.wav
 ```
 
-## 음성이 깨질 때 — 가장 흔한 원인
+## 음성이 깨질 때
 
-정확한 학습 스펙/체크포인트 선정 경위는 `Model_TTS/CLAUDE.md` 10번 섹션 참고. 추론 패키지 버전이 실제 학습 베이스와 다르면 음성이 깨집니다.
-
-| | 실제 학습 (정상 기준) | 호환 안 되는 패키지 |
-|--|----------------------|-------------------|
-| 베이스 | **CosyVoice 3.0 (Fun-CosyVoice3-0.5B)** | CosyVoice-300M-SFT (v1) |
-| yaml | `cosyvoice3.yaml` | `cosyvoice.yaml` |
-| tokenizer | `speech_tokenizer_v3.onnx` | `speech_tokenizer_v1.onnx` |
-| 프롬프트 텍스트 | `You are a helpful assistant.<\|endofprompt\|>...` (자동 처리) | dialect 문장만 |
-| vocoder | CosyVoice3 CausalHiFT | hift / hifigan (v1) |
-
-v1(CosyVoice-300M-SFT) 기반 Full SFT 시도는 이 프로젝트에서 노이즈가 심해 실패로 판정, 폐기됐습니다 (`docs/attempt1_cosyvoice1_failure.md`). 이후 v3 + LoRA로 전환해 성공한 게 지금의 kangwon 체크포인트입니다.
-
-`synthesize.py` 가 모델 폴더를 보고 v1/v3를 감지하고, v3가 아니면 경고를 냅니다.
+학습 스펙과 추론 패키지 버전이 다른 경우(v1/v3 혼용 등)가 대부분입니다. 원인 비교표·상세 진단은 [`doc/tts-voice-quality.md`](../../doc/tts-voice-quality.md) 참고. `synthesize.py`가 모델 폴더를 보고 v1/v3를 감지하고, v3가 아니면 경고를 냅니다.
 
 **올바른 kangwon 구성 (v3):**
 
@@ -69,7 +57,7 @@ python smoke_test.py
 ```
 
 1. `outputs/smoke_self_clone.wav` — 프롬프트와 같은 문장 자기복제  
-   - 이것도 깨지면: **버전/환경** 문제 (문장 길이와 무관)  
+   - 이것도 깨지면: **버전/환경** 문제 (문장 길이와 무관) → [`doc/tts-voice-quality.md`](../../doc/tts-voice-quality.md) 참고  
    - 괜찮으면: RAG 사투리 전체 문장으로 진행 (`--text "..."`)
 
 문장은 **자르지 않습니다.**

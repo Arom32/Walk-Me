@@ -12,6 +12,7 @@ torch/transformers를 import하지 않는 순수 stdlib 모듈이라 walkme-llm 
 from __future__ import annotations
 
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -60,6 +61,23 @@ def synthesize_via_cosyvoice_env(
     if prompt_wav:
         cmd += ["--prompt-wav", str(prompt_wav)]
 
+    mem_limit = os.environ.get("WALKME_TTS_MEM_LIMIT", "10G")
+    if shutil.which("systemd-run"):
+        # cgroup 메모리 상한 + 스왑 금지: 한도 초과 시 느린 스왑 스래싱(시스템 전체
+        # 먹통) 대신 이 프로세스만 즉시 OOM-kill되게 한다. --scope는 명령을
+        # 호출 프로세스의 동기 자식으로 실행하므로 아래 killpg 로직과 그대로 맞물린다.
+        cmd = [
+            "systemd-run", "--user", "--scope", "--collect",
+            "-p", f"MemoryMax={mem_limit}", "-p", "MemorySwapMax=0",
+            "--",
+        ] + cmd
+    else:
+        print(
+            "[경고] systemd-run을 찾을 수 없어 TTS 서브프로세스에 메모리 한도를 "
+            "걸지 못했습니다 (제한 없이 실행).",
+            file=sys.stderr,
+        )
+
     proc = subprocess.Popen(
         cmd,
         cwd=str(TTS_DIR),
@@ -83,8 +101,16 @@ def synthesize_via_cosyvoice_env(
         ) from None
 
     if returncode != 0:
+        hint = ""
+        if returncode is not None and returncode < 0:
+            hint = (
+                f" 시그널로 강제 종료됐습니다 — 메모리 한도(WALKME_TTS_MEM_LIMIT="
+                f"{mem_limit})를 초과해 OOM-kill됐을 가능성이 있습니다. 필요하면 "
+                "환경변수를 올려서 재시도하세요."
+            )
         raise RuntimeError(
             f"TTS 서브프로세스 실패 (exit={returncode}), cosyvoice env를 확인하세요."
+            f"{hint}"
         )
     if not out_path.exists():
         raise RuntimeError(f"TTS 서브프로세스는 성공했지만 출력 파일이 없습니다: {out_path}")

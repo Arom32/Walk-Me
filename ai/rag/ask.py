@@ -64,6 +64,11 @@ def _adapter_base_model(lora_dir: str) -> str | None:
 def load_llm(use_lora: bool = True):
     global _model, _tokenizer, _loaded_with_lora
     if _model is not None and _loaded_with_lora == use_lora:
+        import torch
+
+        if torch.cuda.is_available() and next(_model.parameters()).device.type != "cuda":
+            print("[LLM] CPU에 대기 중이던 모델을 GPU로 복귀")
+            _model.to("cuda")
         return _model, _tokenizer
 
     import torch
@@ -93,10 +98,19 @@ def load_llm(use_lora: bool = True):
         tokenizer.pad_token = tokenizer.eos_token
 
     dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+    quant_kwargs = {}
+    if torch.cuda.is_available():
+        # gemma-4-E2B-it은 텍스트+비전+오디오 타워를 다 가진 멀티모달 모델이라
+        # bf16 풀로드만으로 ~11.4GB를 써서(12GB 카드엔 거의 꽉 참) TTS가 쓸 VRAM이
+        # 안 남는다. 4bit로 줄여 여유를 만든다.
+        from llm.model_config import bnb_config
+
+        quant_kwargs["quantization_config"] = bnb_config
     model = AutoModelForCausalLM.from_pretrained(
         base,
         dtype=dtype,
         device_map="auto" if torch.cuda.is_available() else None,
+        **quant_kwargs,
     )
     if use_lora and lora_path and lora_path.exists():
         from peft import PeftModel
@@ -108,6 +122,27 @@ def load_llm(use_lora: bool = True):
     model.eval()
     _model, _tokenizer, _loaded_with_lora = model, tokenizer, use_lora
     return model, tokenizer
+
+
+def release_llm_gpu_memory() -> None:
+    """LLM을 지우지 않고 GPU에서만 CPU로 내린다 (host RAM에 유지).
+
+    상주 서버(backend)에서 TTS 차례에 VRAM을 비워줄 때 쓴다. `_model = None`으로
+    지우면 다음 요청 때 디스크에서 처음부터(수십 GB) 다시 읽어야 하므로, 대신
+    `to("cpu")`로만 내려서 디스크 재접근 없이 다음 `load_llm()` 호출에서 GPU로
+    복귀시킬 수 있게 한다.
+    """
+    import gc
+
+    import torch
+
+    if _model is None:
+        return
+    if torch.cuda.is_available() and next(_model.parameters()).device.type == "cuda":
+        _model.to("cpu")
+        gc.collect()
+        torch.cuda.empty_cache()
+        print("[LLM] GPU 메모리 반납 (모델은 CPU RAM에 유지, 디스크 재접근 없음)")
 
 
 def generate(
@@ -225,9 +260,51 @@ def assemble_dialect_with_names(names: list[str], region: str | None) -> str:
     first = names[0]
     particle = _object_particle(first)
     return (
-        f"{where}에서 가볼 만한 곳으로는 {joined}이 있습니. "
-        f"특히 {first}{particle} 먼저 가보면 좋습니."
+        f"{where}에서 가볼 만한 곳으로는 {joined}이 있습니다. "
+        f"특히 {first}{particle} 먼저 가보면 좋습니다."
     )
+
+
+def build_masked_dialect_template(names: list[str], region: str | None) -> tuple[str, dict[str, str]]:
+    """장소명을 플레이스홀더로 가린 문장 틀. LoRA가 어미만 사투리로 바꾸게 하고
+    장소명 자체는 절대 못 건드리게 해서 환각을 막는다."""
+    where = region or "강원"
+    placeholders = [f"[장소{i + 1}]" for i in range(len(names))]
+    joined = ", ".join(placeholders)
+    particle = _object_particle(names[0])  # 을/를 판단은 실제 이름 기준
+    template = (
+        f"{where}에서 가볼 만한 곳으로는 {joined}이 있습니다. "
+        f"특히 {placeholders[0]}{particle} 먼저 가보면 좋습니다."
+    )
+    return template, dict(zip(placeholders, names))
+
+
+def dialectize_body(masked_template: str, mapping: dict[str, str]) -> tuple[str, bool]:
+    """본문 틀의 어미만 LoRA로 사투리화. 실패하면 ("", False) — 호출부가 표준 틀로 폴백."""
+    prompt = (
+        "아래 문장의 어미(문장 끝맺음)만 강원도 사투리 말투로 바꿔라.\n"
+        "대괄호로 감싼 [장소N] 표시는 절대 지우거나 바꾸지 말고 그대로 유지할 것.\n"
+        "새로운 문장·정보·장소를 추가하지 말고 원문 문장 구조와 순서를 유지할 것.\n"
+        "변환 문장만 출력.\n\n"
+        f"원문: {masked_template}\n\n"
+        "사투리:"
+    )
+    try:
+        out = generate(prompt, max_new_tokens=160, temperature=0, use_lora=True)
+        out = out.strip().splitlines()[0].strip()
+    except Exception as e:
+        print(f"[경고] 본문 사투리 변환 실패, 표준 틀로 폴백: {e!r}")
+        return "", False
+
+    expected = set(mapping.keys())
+    found = set(re.findall(r"\[장소\d+\]", out))
+    bad = any(x in out for x in ("http", "영어", "〈", "<P"))
+    if bad or not out or len(out) > 300 or found != expected:
+        return "", False
+
+    for placeholder, name in mapping.items():
+        out = out.replace(placeholder, name)
+    return out, True
 
 
 def convert_to_dialect(
@@ -245,10 +322,15 @@ def convert_to_dialect(
     if not names:
         return standard_short, False
 
-    body = assemble_dialect_with_names(names, region)
+    body = assemble_dialect_with_names(names, region)  # 안전한 표준어 폴백, 항상 준비해둠
 
     if not use_lora:
         return body, True
+
+    masked_template, mapping = build_masked_dialect_template(names, region)
+    dialect_body, body_ok = dialectize_body(masked_template, mapping)
+    if body_ok:
+        body = dialect_body
 
     # 장소명 없는 문장만 LoRA에 넘겨 말투 샘플 → 실패해도 body는 유지
     opener_src = (
@@ -262,7 +344,7 @@ def convert_to_dialect(
     )
     try:
         opener = generate(
-            prompt, max_new_tokens=60, temperature=0.3, use_lora=True
+            prompt, max_new_tokens=60, temperature=0, use_lora=True
         )
         opener = opener.strip().splitlines()[0].strip()
         bad = any(
