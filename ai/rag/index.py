@@ -93,6 +93,8 @@ def build_index(
             "region": str(doc.get("region") or ""),
             "visit_type": str(doc.get("visit_type") or ""),
             "visit_count": int(doc.get("visit_count") or 0),
+            "avg_dwell_min": float(doc.get("avg_dwell_min") or 0.0),
+            "avg_satisfaction": float(doc.get("avg_satisfaction") or 0.0),
         }
         metadatas.append(meta)
 

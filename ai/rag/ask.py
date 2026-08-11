@@ -210,6 +210,9 @@ def generate(
     ).strip()
 
 
+_CARD_EXTRA_PREFIXES = ("관련 음식", "평균 만족도", "평균 체류", "주요 활동", "방문 기록 수")
+
+
 def extract_place_cards(docs: list[RetrievedDoc]) -> list[dict]:
     cards = []
     seen = set()
@@ -233,10 +236,50 @@ def extract_place_cards(docs: list[RetrievedDoc]) -> list[dict]:
         for line in d.text.splitlines():
             if line.startswith("주소:"):
                 card["address"] = line.replace("주소:", "", 1).strip()
-            if line.startswith("관련 음식") or line.startswith("평균 만족도"):
+            if line.startswith(_CARD_EXTRA_PREFIXES):
                 card["extra"].append(line)
         cards.append(card)
     return cards
+
+
+_GENERIC_PLACE_NAMES = ("다이소", "이마트", "농협", "편의점")
+_NEARBY_KEYWORDS = ("근처", "주변", "말고", "다른")
+
+
+def match_question_place(question: str, cards: list[dict]) -> dict | None:
+    """질문이 이미 검색된 특정 장소를 콕 집어 물은 건지 판별한다.
+
+    공백을 제거하고 부분 문자열로 비교한다 ("외옹치 해변" ↔ "외옹치해변").
+    2자 미만 장소명은 오탐(예: 장소명이 "거기"인 경우)을 막기 위해 제외하고,
+    "근처"/"주변"처럼 다른 곳을 찾는 질문은 매칭하지 않는다.
+    "경포"/"경포대"처럼 이름이 겹치면 가장 긴 이름이 우선한다.
+    """
+    q = re.sub(r"\s+", "", question)
+    if any(k in q for k in _NEARBY_KEYWORDS):
+        return None
+
+    best: dict | None = None
+    best_len = 0
+    for card in cards:
+        name = re.sub(r"\s+", "", card.get("name") or "")
+        if len(name) < 3 or name in _GENERIC_PLACE_NAMES:
+            continue
+        if name not in q:
+            continue
+        if len(name) > best_len:
+            has_detail = card.get("visit_type") or card.get("address") or card.get("extra")
+            if not has_detail:
+                continue
+            best, best_len = card, len(name)
+    return best
+
+
+def card_field(card: dict, prefix: str) -> str:
+    """extra 라인에서 '접두어: 값'의 값만 꺼낸다. 없으면 빈 문자열."""
+    for line in card.get("extra", []):
+        if line.startswith(prefix):
+            return line.split(":", 1)[1].strip() if ":" in line else ""
+    return ""
 
 
 _SMALLTALK_KEYWORDS = (
@@ -245,12 +288,12 @@ _SMALLTALK_KEYWORDS = (
     "반갑",
     "고마워",
     "고맙",
+    "감사",
     "수고",
     "잘가",
     "잘 가",
     "이름이 뭐",
-    "넌 누구",
-    "너는 누구",
+    "누구",
     "뭐하고 있",
     "뭐해",
     "심심",
@@ -264,6 +307,56 @@ _SMALLTALK_RESPONSES = (
     "허허, 심심하믄 강원도 얘기나 좀 하까요? 맛집이든 갈 만한 데든 물어보이소.",
     "잘 지내지예~ 강원도 여행 준비하는 거라믄 내가 아는 만큼 알려드릴께요.",
 )
+
+_NO_MATCH_DISTANCE = 0.65  # 실측 기준: 정상 관광 질문 top-1 거리는 ~0.63 이하, 오프토픽은 ~0.69 이상
+
+# 신뢰도 게이트에 걸린 질문(오프토픽/미지원)에 쓰는 응대. LLM 자유 생성은 실제로
+# 써 보니 "게이저 타운" 같은 가짜 장소명이나 영어/마크다운 gibberish를 지어내는
+# 사례가 확인돼서 채택하지 않는다 (환각 방지 원칙 위반) — 대신 스몰토크와 같은
+# 패턴으로, 흔한 주제(날씨/나이/코딩 등)는 키워드로 감지해 그에 맞는 고정 문구를,
+# 나머지는 일반 문구 풀에서 골라 다양성만 확보한다.
+_NO_MATCH_CATEGORIES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (
+        ("날씨", "비 와", "눈 와", "기온"),
+        (
+            "날씨는 지도 잘 모르겠고예, 강원도 여행 얘기면 자신 있습니더.",
+            "일기예보는 지 담당이 아이라예. 어디 갈지는 잘 알려드릴 수 있어예.",
+        ),
+    ),
+    (
+        ("몇 살", "나이가", "생일"),
+        (
+            "나이는 비밀입니더~ 그것보다 강원도 여행 얘기나 하입시더.",
+        ),
+    ),
+    (
+        ("코드", "파이썬", "프로그래밍", "알고리즘"),
+        (
+            "그런 건 지가 하나도 모르겠습니더. 강원도 여행 얘기라믄 뭐든 물어보이소.",
+        ),
+    ),
+    (
+        ("심심", "아무말"),
+        (
+            "심심하믄 강원도 얘기나 하까요? 맛집이든 갈 만한 데든 물어보이소.",
+        ),
+    ),
+)
+_NO_MATCH_RESPONSES = (
+    "아이고, 그건 지도 잘 모르겠습니더. 강원도 여행 얘기로 다시 물어봐 주이소.",
+    "그거는 내 담당이 아이라가 잘 모르겠어예. 강원도 어디 갈지 물어보이소.",
+    "그건 좀 어려운 질문이네예. 강원도 여행이라면 뭐든 답해드릴 수 있는데예.",
+    "허허, 그거는 잘 모르겠고예. 강원도 관광지나 맛집 얘기 좀 해볼까예?",
+    "음... 그건 지 전문이 아이라서예. 강원도 여행 궁금한 거 있으믄 편하게 물어보이소.",
+    "그거는 대답하기 어렵네예. 강원도 여행 준비하는 거믄 제가 도와드릴 수 있어예.",
+)
+
+
+def pick_no_match_reply(question: str) -> str:
+    for keywords, templates in _NO_MATCH_CATEGORIES:
+        if any(k in question for k in keywords):
+            return templates[hash(question) % len(templates)]
+    return _NO_MATCH_RESPONSES[hash(question) % len(_NO_MATCH_RESPONSES)]
 
 
 def classify_intent(question: str) -> str:
@@ -314,10 +407,12 @@ def assemble_food_dialect(entries: list[tuple[str, list[str]]], region: str | No
     where = region or "강원"
     top_name, top_foods = entries[0]
     foods_joined = ", ".join(top_foods[:3])
-    body = f"{where}서 뭐 좀 무봐야겠다카믄 {foods_joined} 겉은 게 있습니. 특히 {top_name} 쪽서 마이 묵는다 카데."
+    body = f"{where}서 뭐 좀 무봐야겠다카믄 {foods_joined} 겉은 게 있습니더. 특히 {top_name} 쪽서 마이 묵는다 카데."
     if len(entries) > 1:
-        others = ", ".join(n for n, _ in entries[1:3])
-        body += f"\n{others}에도 먹을 게 있습니."
+        # 표준어 답변(build_food_standard_answer)은 entries를 최대 5개까지 다 보여주는데
+        # 여기서 [1:3]으로 잘라서 사투리 답변만 식당이 덜 나오던 버그 — 표준어와 범위를 맞춘다.
+        others = ", ".join(n for n, _ in entries[1:])
+        body += f"\n{others}에도 먹을 게 있습니더."
     return body
 
 
@@ -340,14 +435,54 @@ def build_standard_answer(question: str, cards: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def build_place_detail_standard(question: str, card: dict) -> str:
+    """단일 장소에 대한 상세 답변. 문서에 있는 값만 그대로 옮겨 적는다 — 새 문장을 지어내지 않는다."""
+    name = card["name"]
+    lines = [f"질문 '{question}' 기준으로, 실제 여행 기록에 남아 있는 {name} 정보입니다."]
+    head = name
+    if card.get("visit_type"):
+        head += f" ({card['visit_type']})"
+    lines.append(head)
+    if card.get("address"):
+        lines.append(f"- 주소: {card['address']}")
+    dwell = card_field(card, "평균 체류")
+    if dwell:
+        lines.append(f"- 평균 체류: {dwell}")
+    satisfaction = card_field(card, "평균 만족도")
+    if satisfaction:
+        lines.append(f"- 평균 만족도: {satisfaction}")
+    activity = card_field(card, "주요 활동")
+    if activity:
+        lines.append(f"- 주요 활동: {activity}")
+    food = card_field(card, "관련 음식")
+    if food:
+        lines.append(f"- 관련 음식/구매: {food}")
+    if len(lines) <= 2:
+        lines.append("상세 기록이 많지 않아 참고용으로만 봐주세요.")
+    else:
+        lines.append("여행하실 때 참고해보세요.")
+    return "\n".join(lines)
+
+
+def _has_batchim(text: str) -> bool:
+    if not text:
+        return False
+    code = ord(text[-1])
+    return 0xAC00 <= code <= 0xD7A3 and (code - 0xAC00) % 28 != 0
+
+
 def _object_particle(name: str) -> str:
     """을/를 — 마지막 글자 받침 유무."""
     if not name:
         return "를"
-    code = ord(name[-1])
-    if 0xAC00 <= code <= 0xD7A3 and (code - 0xAC00) % 28 != 0:
-        return "을"
-    return "를"
+    return "을" if _has_batchim(name) else "를"
+
+
+def _topic_particle(name: str) -> str:
+    """은/는 — 마지막 글자 받침 유무."""
+    if not name:
+        return "는"
+    return "은" if _has_batchim(name) else "는"
 
 
 def build_short_for_convert(cards: list[dict], region: str | None = None) -> str:
@@ -360,8 +495,78 @@ def build_short_for_convert(cards: list[dict], region: str | None = None) -> str
     particle = _object_particle(names[0])
     return (
         f"{where}에서 가볼 만한 곳으로는 {joined}이 있습니다. "
-        f"특히 {names[0]}{particle} 먼저 가보면 좋습니다."
+        f"특히 {names[0]}{particle} 추천합니다."
     )
+
+
+def build_place_detail_body(
+    card: dict, region: str | None = None
+) -> tuple[str, str, dict[str, str]]:
+    """단일 장소 상세 문장을 (표준어 본문, [장소N] 마스킹 틀, 매핑)으로 함께 만든다.
+
+    이름뿐 아니라 유형/주소/만족도/활동 값까지 전부 [장소N]으로 마스킹해서
+    LoRA에는 사실이 하나도 안 보이게 한다 (리스트 모드보다도 환각 여지가 적다).
+    플레이스홀더는 최대 5개 — dialectize_body의 검증 실패율을 낮추기 위함.
+    """
+    name = card["name"]
+    where = card.get("region") or region or "강원"
+    visit_type = card.get("visit_type") or ""
+    address = card.get("address") or ""
+    satisfaction = card_field(card, "평균 만족도")
+    activity = card_field(card, "주요 활동")
+    food = card_field(card, "관련 음식")
+
+    mapping: dict[str, str] = {}
+
+    def slot(value: str) -> str:
+        ph = f"[장소{len(mapping) + 1}]"
+        mapping[ph] = value
+        return ph
+
+    name_ph = slot(name)
+    if visit_type:
+        type_ph = slot(visit_type)
+        std_sentences = [f"{where}에 있는 {name}{_topic_particle(name)} {visit_type}입니다."]
+        mask_sentences = [f"{where}에 있는 {name_ph}{_topic_particle(name)} {type_ph}입니다."]
+    else:
+        std_sentences = [f"{where}에 있는 {name}입니다."]
+        mask_sentences = [f"{where}에 있는 {name_ph}입니다."]
+
+    if len(mapping) < 5 and (address or satisfaction):
+        std_bits, mask_bits = [], []
+        if address and len(mapping) < 5:
+            ph = slot(address)
+            std_bits.append(f"주소는 {address}")
+            mask_bits.append(f"주소는 {ph}")
+        if satisfaction and len(mapping) < 5:
+            ph = slot(satisfaction)
+            std_bits.append(f"평균 만족도는 {satisfaction}")
+            mask_bits.append(f"평균 만족도는 {ph}")
+        if std_bits:
+            std_sentences.append(", ".join(std_bits) + "입니다.")
+            mask_sentences.append(", ".join(mask_bits) + "입니다.")
+
+    if len(mapping) < 5 and activity:
+        ph = slot(activity)
+        std_sentences.append(f"주로 {activity} 같은 걸 하는 곳으로 기록돼 있습니다.")
+        mask_sentences.append(f"주로 {ph} 같은 걸 하는 곳으로 기록돼 있습니다.")
+    elif len(mapping) < 5 and food:
+        ph = slot(food)
+        std_sentences.append(f"관련 기록으로는 {food} 같은 게 남아 있습니다.")
+        mask_sentences.append(f"관련 기록으로는 {ph} 같은 게 남아 있습니다.")
+
+    return " ".join(std_sentences), " ".join(mask_sentences), mapping
+
+
+def _tone_dialect(text: str) -> str:
+    """이미 만든 표준어 문장의 어미만 기계적으로 사투리 어미로 바꾼다 — 이 코드베이스에
+    이미 쓰이는(스몰토크/음식 응답에 실제로 있는) 어미만 재사용하고 새로 지어내지 않는다.
+    LoRA 생성이 실패해도(오늘 실측상 대부분 그럼) 폴백이 표준어로 안 들리게 하기 위함.
+    사실 값은 절대 안 건드림 — 문장 끝 술어만 문자열 치환."""
+    text = text.replace("있습니다", "있습니더")
+    text = text.replace("합니다", "합니더")
+    text = text.replace("입니다", "이래요")
+    return text
 
 
 def assemble_dialect_with_names(names: list[str], region: str | None) -> str:
@@ -370,9 +575,9 @@ def assemble_dialect_with_names(names: list[str], region: str | None) -> str:
     joined = ", ".join(names)
     first = names[0]
     particle = _object_particle(first)
-    return (
+    return _tone_dialect(
         f"{where}에서 가볼 만한 곳으로는 {joined}이 있습니다. "
-        f"특히 {first}{particle} 먼저 가보면 좋습니다."
+        f"특히 {first}{particle} 추천합니다."
     )
 
 
@@ -385,13 +590,33 @@ def build_masked_dialect_template(names: list[str], region: str | None) -> tuple
     particle = _object_particle(names[0])  # 을/를 판단은 실제 이름 기준
     template = (
         f"{where}에서 가볼 만한 곳으로는 {joined}이 있습니다. "
-        f"특히 {placeholders[0]}{particle} 먼저 가보면 좋습니다."
+        f"특히 {placeholders[0]}{particle} 추천합니다."
     )
     return template, dict(zip(placeholders, names))
 
 
-def dialectize_body(masked_template: str, mapping: dict[str, str]) -> tuple[str, bool]:
-    """본문 틀의 어미만 LoRA로 사투리화. 실패하면 ("", False) — 호출부가 표준 틀로 폴백."""
+def _label_phrases(masked_template: str) -> list[str]:
+    """각 [장소N] 플레이스홀더 바로 앞의 "라벨" 어절(예: "평균 만족도는")을 뽑는다.
+    이 라벨이 깨지면 뒤따르는 사실 값이 뭘 가리키는지 못 알아보게 되므로, 사투리
+    변환 후에도 그대로 남아있어야 하는 최소 요구사항으로 쓴다.
+
+    첫 플레이스홀더 앞의 구절(예: "가볼 만한 곳으로는")은 문장 오프닝 절이라
+    어미처럼 사투리 스타일로 유동적으로 바뀌는 걸 실제로 관찰했기 때문에 제외한다
+    — "곳으로는"→"곳으로,"처럼 바뀌는 건 정상 동작이지 오염이 아니다."""
+    parts = re.split(r"(\[장소\d+\])", masked_template)
+    labels = []
+    for i in range(3, len(parts), 2):
+        preceding = parts[i - 1]
+        words = preceding.strip().split()
+        last_word = words[-1].strip(",.") if words else ""
+        if len(last_word) >= 2:
+            labels.append(last_word)
+    return labels
+
+
+def _dialectize_body_attempt(
+    masked_template: str, mapping: dict[str, str], temperature: float
+) -> tuple[str, bool]:
     prompt = (
         "아래 문장의 어미(문장 끝맺음)만 강원도 사투리 말투로 바꿔라.\n"
         "대괄호로 감싼 [장소N] 표시는 절대 지우거나 바꾸지 말고 그대로 유지할 것.\n"
@@ -401,16 +626,24 @@ def dialectize_body(masked_template: str, mapping: dict[str, str]) -> tuple[str,
         "사투리:"
     )
     try:
-        out = generate(prompt, max_new_tokens=160, temperature=0, use_lora=True)
+        out = generate(prompt, max_new_tokens=160, temperature=temperature, use_lora=True)
         out = out.strip().splitlines()[0].strip()
     except Exception as e:
-        print(f"[경고] 본문 사투리 변환 실패, 표준 틀로 폴백: {e!r}")
+        print(f"[경고] 본문 사투리 변환 실패(temperature={temperature}): {e!r}")
         return "", False
 
     expected = set(mapping.keys())
     found = set(re.findall(r"\[장소\d+\]", out))
     bad = any(x in out for x in ("http", "영어", "〈", "<P", "사투리", "원문", "말투"))
-    if bad or not out or len(out) > 300 or found != expected:
+    labels_ok = all(label in out for label in _label_phrases(masked_template))
+    # "가보면"→"가믄", "좋습니다"→"좋제" 같은 활용 변화는 정상이지만, "먼저"/"추천"은
+    # 실사용 중 "메머가"/"메번"/"택름합니다" 등으로 반복해서 깨지는 게 확인된 단어라
+    # 별도로 보존을 요구한다 (플레이스홀더 뒤 구절이라 _label_phrases가 못 잡음).
+    _PROTECTED_CONNECTORS = ("먼저", "추천")
+    connector_ok = all(
+        (word not in masked_template) or (word in out) for word in _PROTECTED_CONNECTORS
+    )
+    if bad or not out or len(out) > 300 or found != expected or not labels_ok or not connector_ok:
         return "", False
 
     for placeholder, name in mapping.items():
@@ -418,30 +651,69 @@ def dialectize_body(masked_template: str, mapping: dict[str, str]) -> tuple[str,
     return out, True
 
 
+def dialectize_body(masked_template: str, mapping: dict[str, str]) -> tuple[str, bool]:
+    """본문 틀의 어미만 LoRA로 사투리화. 실패하면 ("", False) — 호출부가 표준 틀로 폴백.
+
+    temperature=0(결정론적)으로 먼저 시도한다 — 같은 입력이면 항상 같은 결과라
+    빠르고 재현 가능하다. 검증(플레이스홀더/라벨/"먼저" 보존)에 걸리면, 결정론적
+    시도가 매번 똑같이 깨지는 것뿐일 수 있으므로 무작위성을 조금씩 높여 재시도한다.
+    검증 기준은 시도마다 동일하게 적용되므로 재시도가 안전성을 낮추지 않는다 —
+    통과 못 하면 여러 번 시도해도 결국 안전한 표준어 폴백으로 끝난다."""
+    for temperature in (0, 0.4, 0.7):
+        out, ok = _dialectize_body_attempt(masked_template, mapping, temperature)
+        if ok:
+            return out, True
+    return "", False
+
+
 def convert_to_dialect(
     standard_short: str,
     must_keep_names: list[str],
     use_lora: bool,
     region: str | None = None,
+    *,
+    fallback_body: str | None = None,
+    masked: tuple[str, dict[str, str]] | None = None,
+    include_opener: bool = True,
+    convert_body: bool = True,
 ) -> tuple[str, bool]:
     """
-    LoRA에 장소명을 넣지 않는다.
-    - 본문: 장소명 고정 삽입 + 사투리 말미 템플릿 (항상 성공)
-    - (선택) LoRA로 장소명 없는 짧은 인사만 앞에 붙임
+    LoRA에 실제 사실 값을 넣지 않는다.
+    - 본문: 사실 고정 삽입 + 사투리 말미 템플릿 (항상 성공)
+    - (선택) LoRA로 사실 없는 짧은 인사만 앞에 붙임
+
+    include_opener=False면 인사를 아예 안 붙인다 — 대화가 이미 진행 중인
+    후속 턴에서 매번 "여행 오셨으면" 인사가 반복되는 걸 막기 위함.
+
+    convert_body=False면 본문 자체는 LoRA에 안 태우고 fallback_body(표준어)를
+    그대로 쓴다 — 장소 상세 답변처럼 마스킹 문장이 길고 사실 밀도가 높으면
+    LoRA가 마스킹 안 된 일반 단어까지 오타로 깨뜨리는 사례가 있어서, 그런
+    경우엔 본문 정확도를 우선한다 (오프너만 사투리로 붙임).
+
+    fallback_body/masked를 넘기면 리스트 모드 전용 템플릿
+    (assemble_dialect_with_names/build_masked_dialect_template) 대신 그걸 쓴다
+    — 장소 상세 답변 등 다른 문장 모양을 그대로 사투리 변환 파이프라인에 태우기 위함.
     """
     names = [n for n in must_keep_names[:5] if n]
     if not names:
         return standard_short, False
 
-    body = assemble_dialect_with_names(names, region)  # 안전한 표준어 폴백, 항상 준비해둠
+    body = fallback_body if fallback_body is not None else assemble_dialect_with_names(names, region)
 
     if not use_lora:
         return body, True
 
-    masked_template, mapping = build_masked_dialect_template(names, region)
-    dialect_body, body_ok = dialectize_body(masked_template, mapping)
-    if body_ok:
-        body = dialect_body
+    if convert_body:
+        if masked is not None:
+            masked_template, mapping = masked
+        else:
+            masked_template, mapping = build_masked_dialect_template(names, region)
+        dialect_body, body_ok = dialectize_body(masked_template, mapping)
+        if body_ok:
+            body = dialect_body
+
+    if not include_opener:
+        return body, True
 
     # 장소명 없는 문장만 LoRA에 넘겨 말투 샘플 → 실패해도 body는 유지
     opener_src = (
@@ -462,8 +734,14 @@ def convert_to_dialect(
             x in opener
             for x in ("신발", "헐겁", "http", "영어", "〈", "<P", "사투리", "원문", "말투")
         )
+        # 오프너는 원문에 사실이 전혀 없는 문장이라, 숫자나 다른 지역명이 새로
+        # 등장하면 사실을 지어냈다는 신호로 보고 버린다.
+        has_digit = any(ch.isdigit() for ch in opener)
+        leaked_region = any(
+            r in opener for r in (*_REGION_NAMES, *_OTHER_REGIONS) if r != (region or "")
+        )
         # 너무 길거나 빈 응답이면 버림
-        if bad or not opener or len(opener) > 80:
+        if bad or has_digit or leaked_region or not opener or len(opener) > 80:
             return body, True
         return f"{opener}\n{body}", True
     except Exception as e:
@@ -471,7 +749,31 @@ def convert_to_dialect(
         return body, True
 
 
+
+
 _REGION_NAMES = ("속초", "강릉", "춘천", "양양", "평창", "원주", "동해", "삼척")
+# 강원도 밖 시/도 — 전체 17개 광역 행정구역 중 강원도를 뺀 나머지 고정 목록이라
+# 사투리 표현처럼 무한히 늘어나지 않는다 (whack-a-mole 아님).
+_OTHER_REGIONS = (
+    "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종",
+    "경기", "충북", "충남", "전북", "전남", "경북", "경남", "제주",
+)
+
+
+def _reply_only(question: str, region: str | None, reply: str, context: str = "") -> dict:
+    """스몰토크/비지원 지역/신뢰도 게이트처럼 '장소 정보 없이 문장 하나만' 돌려주는
+    응답 3곳의 공통 모양. RAG 사실 없이 고정/생성 문구만 있는 경우 전용."""
+    return {
+        "question": question,
+        "region": region,
+        "places": [],
+        "context": context,
+        "standard": reply,
+        "short": reply,
+        "dialect": reply,
+        "dialect_ok": True,
+        "answer": reply,
+    }
 
 
 def answer_question(
@@ -495,32 +797,43 @@ def answer_question(
     intent = classify_intent(question)
 
     if intent == "smalltalk":
-        reply = smalltalk_reply(question)
-        return {
-            "question": question,
-            "region": region,
-            "places": [],
-            "context": "",
-            "standard": reply,
-            "short": reply,
-            "dialect": reply,
-            "dialect_ok": True,
-            "answer": reply,
-        }
+        return _reply_only(question, region, smalltalk_reply(question))
 
-    if not region:
-        for r in _REGION_NAMES:
-            if r in question:
-                region = r
+    # 알려진 오프토픽 카테고리(날씨/나이/코딩/심심)는 RAG 신뢰도 게이트보다 먼저 확정
+    # 처리한다. region=None(대화 첫 턴 등)이면 지역 필터 없이 검색이 더 넓은 코퍼스를
+    # 도는데, 그러면 오프토픽 질문의 top-1 거리도 같이 낮아져 _NO_MATCH_DISTANCE
+    # 임계값을 통과해버리는 게 실측으로 확인됨 (예: "지금 날씨 어떄요?" region=None →
+    # distance 0.645, region="속초" → 0.71). 새 키워드를 늘리는 게 아니라 이미 있는
+    # 카테고리를 검색 전에 앞당겨 적용하는 것이라 두더지잡기가 아니다.
+    for keywords, templates in _NO_MATCH_CATEGORIES:
+        if any(k in question for k in keywords):
+            reply = templates[hash(question) % len(templates)]
+            return _reply_only(question, region, reply)
+
+    # 질문에 지역이 명시돼 있으면 항상 최우선 — 프론트가 이전에 선택된 지역(칩 등)을
+    # region 파라미터로 계속 넘기고 있어도, "양양 해변 추천"처럼 질문 안에서 다른
+    # 지역을 콕 집으면 그게 이겨야 한다 (안 그러면 넘어온 region이 "강릉"으로 굳어
+    # 있을 때 "양양" 질문에도 계속 강릉으로 답해버리는 버그가 남는다).
+    explicit_region = next((r for r in _REGION_NAMES if r in question), None)
+    other_region = next((r for r in _OTHER_REGIONS if r in question), None)
+    if explicit_region:
+        region = explicit_region
+    elif other_region:
+        # 강원도 밖 지역을 콕 집어 물으면, 넘어온/이전 턴 지역을 이어받지 말고
+        # 지원 범위 밖이라고 답한다 — 프론트가 넘긴 region 파라미터가 이미 다른
+        # 지역으로 굳어 있어도(예: "강릉") 질문의 명시적 언급이 항상 이긴다.
+        reply = (
+            f"{other_region}는 지가 아직 잘 모르는 동네라예. 강원도 여행 얘기로 물어봐 주시믄 좋겠습니더."
+        )
+        return _reply_only(question, region, reply)
+    elif not region:
+        # 후속 질문이 지역을 다시 언급하지 않으면 직전 턴의 지역을 유지한다.
+        for turn in reversed(history):
+            prev_q = (turn.get("question") or "") if isinstance(turn, dict) else ""
+            found = next((r for r in _REGION_NAMES if r in prev_q), None)
+            if found:
+                region = found
                 break
-        if not region:
-            # 후속 질문이 지역을 다시 언급하지 않으면 직전 턴의 지역을 유지한다.
-            for turn in reversed(history):
-                prev_q = (turn.get("question") or "") if isinstance(turn, dict) else ""
-                found = next((r for r in _REGION_NAMES if r in prev_q), None)
-                if found:
-                    region = found
-                    break
 
     if places_only is True or any(
         x in question for x in ("가볼", "명소", "관광", "해변", "시장", "장소")
@@ -544,8 +857,13 @@ def answer_question(
     context = format_context(docs)
     cards = extract_place_cards(docs)
 
+    if places_only and (not docs or (docs[0].distance is not None and docs[0].distance > _NO_MATCH_DISTANCE)):
+        return _reply_only(question, region, pick_no_match_reply(question), context=context)
+
     if intent == "food":
-        standard, food_entries = build_food_standard_answer(question, cards)
+        food_matched = match_question_place(question, cards)
+        food_cards = [food_matched] if food_matched is not None else cards
+        standard, food_entries = build_food_standard_answer(question, food_cards)
         if food_entries:
             dialect = assemble_food_dialect(food_entries, region)
             dialect_ok = True
@@ -553,17 +871,39 @@ def answer_question(
             dialect = standard
             dialect_ok = False
         short = standard
+        if food_matched is not None:
+            cards = [food_matched] + [c for c in cards if c["name"] != food_matched["name"]]
     else:
-        standard = build_standard_answer(question, cards)
-        short = build_short_for_convert(cards, region=region)
-        names = [c["name"] for c in cards]
+        matched = match_question_place(question, cards)
+        if matched is not None:
+            standard = build_place_detail_standard(question, matched)
+            short, masked_template, mapping = build_place_detail_body(matched, region=region)
 
-        dialect = standard
-        dialect_ok = False
-        if with_llm:
-            dialect, dialect_ok = convert_to_dialect(
-                short, names, use_lora=not no_lora, region=region
-            )
+            dialect = standard
+            dialect_ok = False
+            if with_llm:
+                dialect, dialect_ok = convert_to_dialect(
+                    short,
+                    [matched["name"]],
+                    use_lora=not no_lora,
+                    region=region,
+                    fallback_body=_tone_dialect(short),
+                    masked=(masked_template, mapping),
+                    include_opener=not history,
+                )
+            cards = [matched] + [c for c in cards if c["name"] != matched["name"]]
+        else:
+            standard = build_standard_answer(question, cards)
+            short = build_short_for_convert(cards, region=region)
+            names = [c["name"] for c in cards]
+
+            dialect = standard
+            dialect_ok = False
+            if with_llm:
+                dialect, dialect_ok = convert_to_dialect(
+                    short, names, use_lora=not no_lora, region=region,
+                    include_opener=not history,
+                )
 
     return {
         "question": question,

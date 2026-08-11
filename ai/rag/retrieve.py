@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -88,7 +89,51 @@ class TravelRetriever:
                     metadata=metadatas[i] or {},
                 )
             )
+
+        if doc_type == "place":
+            exact = self._find_exact_place_match(query, region)
+            if exact is not None and exact.id not in {d.id for d in docs}:
+                docs.insert(0, exact)
+                docs = docs[:k]
+
         return docs
+
+    def _find_exact_place_match(
+        self, query: str, region: str | None
+    ) -> RetrievedDoc | None:
+        """벡터 검색 top-k가 놓칠 수 있는 정확한 장소명을, 이름 목록을
+        직접 훑어서 찾는다 (예: "속초항"이 벡터 검색에서 밀려나는 경우).
+        임베딩 계산이 필요 없는 메타데이터 조회라 비용이 낮다."""
+        where: dict = {"doc_type": "place"}
+        if region:
+            where = {"$and": [{"doc_type": "place"}, {"region": region}]}
+        got = self.collection.get(where=where, include=["metadatas"])
+        ids = got.get("ids") or []
+        metadatas = got.get("metadatas") or []
+
+        q_norm = re.sub(r"\s+", "", query)
+        best_id, best_len = None, 0
+        for doc_id, meta in zip(ids, metadatas):
+            name = (meta or {}).get("place_name") or ""
+            name_norm = re.sub(r"\s+", "", name)
+            if len(name_norm) < 3:
+                continue
+            if name_norm in q_norm and len(name_norm) > best_len:
+                best_id, best_len = doc_id, len(name_norm)
+
+        if best_id is None:
+            return None
+        fetched = self.collection.get(ids=[best_id], include=["documents", "metadatas"])
+        fetched_docs = fetched.get("documents") or []
+        fetched_metas = fetched.get("metadatas") or []
+        if not fetched_docs:
+            return None
+        return RetrievedDoc(
+            id=best_id,
+            text=fetched_docs[0] or "",
+            distance=0.0,
+            metadata=fetched_metas[0] or {},
+        )
 
 
 def format_context(docs: list[RetrievedDoc]) -> str:
