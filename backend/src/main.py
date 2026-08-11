@@ -35,13 +35,23 @@ from src.routers import messages, sessions, users  # noqa: E402
 
 
 app = FastAPI(title="Walk-Me", version="0.2.0")
-Base.metadata.create_all(bind=engine)
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:  # noqa: BLE001
+    # 로컬에 Postgres/Docker가 아직 없는 환경에서도 /guide 등 DB 무관 API는
+    # 계속 쓸 수 있게 임시로 감싸둠. DB 준비되면 이 try/except는 지워도 됨.
+    print(f"[경고] DB 테이블 생성 실패 (DB 연결 확인 필요): {e!r}")
 app.include_router(users.router)
 app.include_router(sessions.router)
 app.include_router(messages.router)
 
 #-------------------------
 
+
+
+class HistoryTurn(BaseModel):
+    question: str
+    answer: Optional[str] = None
 
 
 class GuideRequest(BaseModel):
@@ -52,6 +62,11 @@ class GuideRequest(BaseModel):
     with_llm: bool = True
     no_lora: bool = False
     tts: bool = False
+    history: list[HistoryTurn] = Field(
+        default_factory=list,
+        description="같은 대화 세션의 이전 턴들(오래된 것 -> 최신 순). "
+        "'그중에', '거기' 같은 후속 질문의 지역 유지·검색 보강에만 쓰인다.",
+    )
 
 
 @app.get("/")
@@ -85,6 +100,7 @@ def guide(req: GuideRequest):
         places_only=req.places_only,
         with_llm=req.with_llm,
         no_lora=req.no_lora,
+        history=[t.model_dump() for t in req.history[-10:]],
     )
 
     payload = {

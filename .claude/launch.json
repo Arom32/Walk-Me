@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["frontend/node_modules/vite/bin/vite.js", "frontend", "--host", "--config", "frontend/vite.config.ts"],
+      "port": 5173
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "C:\\Windows\\System32\\cmd.exe",
+      "runtimeArgs": ["/d", "/c", "set PATH=%PATH%;C:\\Users\\DS\\miniconda3\\Scripts;C:\\Users\\DS\\miniconda3\\condabin && set HF_HUB_OFFLINE=1 && C:\\Users\\DS\\miniconda3\\envs\\walkme-llm\\python.exe -m uvicorn src.main:app --app-dir backend --host 0.0.0.0 --port 8000"],
+      "port": 8000
+    }
+  ]
+}

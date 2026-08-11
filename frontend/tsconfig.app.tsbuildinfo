@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/components/audiowaveform.tsx","./src/components/composer.tsx","./src/components/historysidebar.tsx","./src/components/persona.tsx","./src/components/placesrow.tsx","./src/lib/audioanalyser.ts"],"version":"5.6.3"}

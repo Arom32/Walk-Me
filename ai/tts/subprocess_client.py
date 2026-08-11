@@ -24,6 +24,30 @@ DEFAULT_OUT_DIR = TTS_DIR / "outputs"
 CONDA_ENV = "cosyvoice"
 
 
+def _cosyvoice_python() -> str:
+    """conda run 없이 cosyvoice env의 python 인터프리터를 직접 찾는다.
+
+    Windows의 `conda run`은 인자에 개행이 섞이면 스크립트로 못 감싼다
+    (`NotImplementedError: ... arguments contain newlines`) — 사투리
+    답변은 항상 여러 줄이라 매번 이 버그에 걸린다. 그래서 `conda run`
+    래퍼를 거치지 않고, 지금 실행 중인 인터프리터(walkme-llm env)의
+    경로에서 conda root를 역산해 cosyvoice env의 python을 직접 찾아
+    실행한다 (mac/리눅스에서도 동일하게 동작).
+    """
+    here = Path(sys.executable).resolve()
+    for ancestor in here.parents:
+        env_dir = ancestor / "envs" / CONDA_ENV
+        if env_dir.exists():
+            for rel in ("python.exe", "bin/python"):
+                candidate = env_dir / rel
+                if candidate.exists():
+                    return str(candidate)
+    raise RuntimeError(
+        f"cosyvoice conda env의 python을 찾지 못했습니다 "
+        f"(conda root를 {here} 기준으로 탐색했지만 실패)"
+    )
+
+
 def synthesize_via_cosyvoice_env(
     text: str,
     out_path: Path | str | None = None,
@@ -53,8 +77,7 @@ def synthesize_via_cosyvoice_env(
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
     cmd = [
-        "conda", "run", "-n", CONDA_ENV, "--no-capture-output",
-        "python", "synthesize.py", text, "--out", str(out_path),
+        _cosyvoice_python(), "synthesize.py", text, "--out", str(out_path),
     ]
     if prompt_text:
         cmd += ["--prompt-text", prompt_text]
